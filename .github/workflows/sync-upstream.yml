@@ -1,0 +1,262 @@
+name: Sync Upstream
+
+# Checks anomalyco/models.dev (upstream) for new commits three times daily
+# and merges them into our fork's dev branch automatically when safe to do so.
+#
+# Schedule (UTC):
+#   - 13:00 UTC = 08:00 EST / 05:00 PST
+#   - 17:00 UTC = 12:00 EST / 09:00 PST
+#   - 01:00 UTC = 20:00 EST / 17:00 PST
+#
+# Conflict handling:
+#   - Fast-forward and clean merges are committed and pushed automatically.
+#   - If a merge conflict is detected, the workflow opens a GitHub issue
+#     with a conflict report and exits without pushing anything broken.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 08:00 EST
+    - cron: '0 17 * * *'   # 12:00 EST
+    - cron: '0 1  * * *'   # 20:00 EST
+  workflow_dispatch:         # Allow manual trigger at any time
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false  # Never cancel an in-progress sync
+
+permissions:
+  contents: write   # push merged commits to dev
+  issues: write     # open conflict-report issues
+
+jobs:
+  sync:
+    name: Merge upstream into dev
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork (dev branch, full history)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/anomalyco/models.dev.git
+          git remote set-url --push upstream DISABLED  # never push to upstream
+
+      - name: Fetch upstream dev
+        run: git fetch upstream dev --no-tags
+
+      - name: Check whether sync is needed
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream/dev)
+          FORK_SHA=$(git rev-parse HEAD)
+
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "fork_sha=$FORK_SHA"         >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor upstream/dev HEAD; then
+            echo "status=up_to_date" >> "$GITHUB_OUTPUT"
+            echo "✅ Fork is already up to date with upstream."
+          else
+            NEW=$(git rev-list HEAD..upstream/dev --count)
+            echo "status=behind"         >> "$GITHUB_OUTPUT"
+            echo "new_commit_count=$NEW" >> "$GITHUB_OUTPUT"
+            echo "📦 Fork is $NEW commit(s) behind upstream."
+          fi
+
+      - name: Attempt upstream merge
+        if: steps.check.outputs.status == 'behind'
+        id: merge
+        run: |
+          # Attempt a no-commit merge first to detect conflicts cleanly
+          if git merge --no-commit --no-ff upstream/dev 2>&1; then
+            # No conflicts — complete the merge
+            git merge --abort 2>/dev/null || true
+
+            # Run the real merge with a descriptive message
+            UPSTREAM_SHA="${{ steps.check.outputs.upstream_sha }}"
+            SHORT_SHA="${UPSTREAM_SHA:0:8}"
+            COUNT="${{ steps.check.outputs.new_commit_count }}"
+
+            git merge upstream/dev \
+              --no-edit \
+              -m "chore: sync $COUNT commit(s) from upstream (${SHORT_SHA})"
+
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort 2>/dev/null || true
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+            echo "⚠️  Merge conflict detected — will open a GitHub issue."
+          fi
+
+      - name: Validate data after merge
+        if: steps.merge.outputs.result == 'success'
+        id: validate
+        run: |
+          # Install deps and run schema validation on the merged state
+          npm install -g bun 2>/dev/null || true
+          curl -fsSL https://bun.sh/install | bash 2>/dev/null || true
+          export PATH="$HOME/.bun/bin:$PATH"
+
+          bun install --frozen-lockfile
+
+          if bun validate > /dev/null 2>&1; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+            echo "✅ bun validate passed."
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            # Capture validation errors for the issue body
+            bun validate 2>&1 | tail -40 > /tmp/validate-errors.txt || true
+            echo "❌ bun validate failed — will open a GitHub issue."
+          fi
+
+      - name: Push merged commits
+        if: |
+          steps.merge.outputs.result == 'success' &&
+          steps.validate.outputs.result == 'pass'
+        run: |
+          git push origin dev
+          echo "🚀 Pushed merged commits to origin/dev."
+
+      - name: Open issue on merge conflict
+        if: steps.merge.outputs.result == 'conflict'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+
+            // Collect conflict details
+            let diffStat = '';
+            try {
+              diffStat = execSync(
+                'git log HEAD..upstream/dev --oneline | head -20',
+                { encoding: 'utf8' }
+              );
+            } catch {}
+
+            const upstreamSha = '${{ steps.check.outputs.upstream_sha }}';
+            const forkSha     = '${{ steps.check.outputs.fork_sha }}';
+            const count       = '${{ steps.check.outputs.new_commit_count }}';
+
+            const title = `⚠️ Upstream sync conflict — manual merge required`;
+            const body = [
+              '## Upstream sync detected a merge conflict',
+              '',
+              `The scheduled sync workflow could not automatically merge upstream \`dev\``,
+              `into this fork's \`dev\` branch due to a merge conflict.`,
+              '',
+              '### Details',
+              `| | SHA |`,
+              `|---|---|`,
+              `| **Upstream HEAD** | \`${upstreamSha}\` |`,
+              `| **Fork HEAD** | \`${forkSha}\` |`,
+              `| **New upstream commits** | ${count} |`,
+              '',
+              '### Pending upstream commits',
+              '```',
+              diffStat || '(could not retrieve diff)',
+              '```',
+              '',
+              '### How to resolve',
+              '```bash',
+              '# Fetch upstream',
+              'git fetch upstream',
+              '',
+              '# Merge and resolve conflicts manually',
+              'git checkout dev',
+              'git merge upstream/dev',
+              '# ... resolve conflicts ...',
+              'git push origin dev',
+              '```',
+              '',
+              '---',
+              `*Auto-generated by the [sync-upstream workflow](../actions/workflows/sync-upstream.yml) — Run #${{ github.run_number }}*`,
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title,
+              body,
+              labels: ['sync-conflict'],
+            });
+
+      - name: Open issue on validation failure
+        if: |
+          steps.merge.outputs.result == 'success' &&
+          steps.validate.outputs.result == 'fail'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let errors = '';
+            try {
+              errors = fs.readFileSync('/tmp/validate-errors.txt', 'utf8');
+            } catch {}
+
+            const upstreamSha = '${{ steps.check.outputs.upstream_sha }}';
+            const title = `⚠️ Upstream sync validation failure — manual review required`;
+            const body = [
+              '## Upstream merge passed but schema validation failed',
+              '',
+              `The upstream commits were merged cleanly, but \`bun validate\` failed`,
+              `on the merged state. The push was **not** made to avoid introducing`,
+              `invalid data.`,
+              '',
+              `**Upstream SHA merged:** \`${upstreamSha}\``,
+              '',
+              '### Validation errors',
+              '```',
+              errors || '(see workflow logs for details)',
+              '```',
+              '',
+              '### How to resolve',
+              '```bash',
+              'git fetch upstream',
+              'git checkout dev',
+              'git merge upstream/dev',
+              'bun validate  # fix any errors reported',
+              'git push origin dev',
+              '```',
+              '',
+              '---',
+              `*Auto-generated by the [sync-upstream workflow](../actions/workflows/sync-upstream.yml) — Run #${{ github.run_number }}*`,
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title,
+              body,
+              labels: ['sync-conflict'],
+            });
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Sync Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outputs.status }}" = "up_to_date" ]; then
+            echo "✅ **Already up to date** — no new upstream commits." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.merge.outputs.result }}" = "success" ] && [ "${{ steps.validate.outputs.result }}" = "pass" ]; then
+            echo "🚀 **Synced successfully** — merged ${{ steps.check.outputs.new_commit_count }} commit(s) and pushed to \`dev\`." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.merge.outputs.result }}" = "conflict" ]; then
+            echo "⚠️ **Conflict detected** — manual merge required. A GitHub issue has been opened." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.validate.outputs.result }}" = "fail" ]; then
+            echo "❌ **Validation failed** — merge succeeded but \`bun validate\` failed. Push was skipped. A GitHub issue has been opened." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | SHA |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Upstream | \`${{ steps.check.outputs.upstream_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Fork | \`${{ steps.check.outputs.fork_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
