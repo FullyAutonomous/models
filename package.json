@@ -16,6 +16,7 @@
   },
   "scripts": {
     "validate": "bun ./packages/core/script/validate.ts",
+    "freshness": "bun ./packages/core/script/freshness-report.ts",
     "helicone:generate": "bun ./packages/core/script/generate-helicone.ts",
     "venice:generate": "bun ./packages/core/script/generate-venice.ts",
     "vercel:generate": "bun ./packages/core/script/generate-vercel.ts",
