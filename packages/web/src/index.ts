@@ -597,3 +597,125 @@ window.addEventListener("popstate", () => {
   initializeFromURL();
   restoreCompare(getQueryParams());
 });
+
+///////////////////////////////////////////
+// Cost Calculator
+///////////////////////////////////////////
+
+interface PricingEntry {
+  key: string;
+  name: string;
+  provider: string;
+  input: number;
+  output: number;
+  cache_read?: number;
+}
+
+const calcBtn = document.getElementById("calc-btn") as HTMLButtonElement | null;
+const calcModal = document.getElementById("calc-modal") as HTMLDialogElement | null;
+const calcClose = document.getElementById("calc-close") as HTMLButtonElement | null;
+const calcResults = document.getElementById("calc-results") as HTMLElement | null;
+
+// Parse embedded pricing data
+const pricingDataEl = document.getElementById("pricing-data");
+const pricingData: PricingEntry[] = pricingDataEl
+  ? JSON.parse(pricingDataEl.textContent ?? "[]")
+  : [];
+
+function calcTotalCost(
+  entry: PricingEntry,
+  inputTokens: number,
+  outputTokens: number,
+  cacheTokens: number,
+  requests: number,
+): number {
+  const perRequest =
+    (inputTokens * entry.input) / 1_000_000 +
+    (outputTokens * entry.output) / 1_000_000 +
+    (cacheTokens * (entry.cache_read ?? 0)) / 1_000_000;
+  return perRequest * requests;
+}
+
+function renderCalcResults() {
+  if (!calcResults) return;
+
+  const inputTokens = parseFloat((document.getElementById("calc-input-tokens") as HTMLInputElement).value) || 0;
+  const outputTokens = parseFloat((document.getElementById("calc-output-tokens") as HTMLInputElement).value) || 0;
+  const cacheTokens = parseFloat((document.getElementById("calc-cache-tokens") as HTMLInputElement).value) || 0;
+  const requests = parseFloat((document.getElementById("calc-requests") as HTMLInputElement).value) || 1;
+
+  const results = pricingData
+    .map(entry => ({
+      entry,
+      total: calcTotalCost(entry, inputTokens, outputTokens, cacheTokens, requests),
+    }))
+    .sort((a, b) => a.total - b.total)
+    .slice(0, 20);
+
+  if (results.length === 0) {
+    calcResults.innerHTML = "<p>No models with pricing data available.</p>";
+    return;
+  }
+
+  const rows = results
+    .map(
+      ({ entry, total }, i) =>
+        `<tr class="${i === 0 ? "calc-cheapest" : ""}">
+          <td>${i + 1}</td>
+          <td><span class="calc-provider">${entry.provider}</span> ${entry.name}</td>
+          <td class="calc-cost">$${total.toFixed(2)}/mo</td>
+          <td class="calc-cost-unit">
+            $${((entry.input)).toFixed(2)} in
+            / $${((entry.output)).toFixed(2)} out
+          </td>
+        </tr>`,
+    )
+    .join("");
+
+  calcResults.innerHTML = `
+    <table class="calc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Model</th>
+          <th>Est. Monthly Cost</th>
+          <th>Rate (per 1M tokens)</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+if (calcBtn && calcModal) {
+  calcBtn.addEventListener("click", () => {
+    renderCalcResults();
+    let scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    calcModal.showModal();
+    calcModal.addEventListener("close", () => {
+      document.body.style.position = "";
+      document.body.style.top = "";
+      window.scrollTo(0, scrollY);
+    }, { once: true });
+  });
+
+  // Re-calculate on input change
+  calcModal.querySelectorAll<HTMLInputElement>(".calc-number").forEach(input => {
+    input.addEventListener("input", renderCalcResults);
+  });
+}
+
+calcClose?.addEventListener("click", () => calcModal?.close());
+calcModal?.addEventListener("click", (e) => {
+  if (e.target === calcModal) calcModal.close();
+});
+
+// Keyboard shortcut: Cmd+Shift+C
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "c") {
+    e.preventDefault();
+    calcBtn?.click();
+  }
+});
