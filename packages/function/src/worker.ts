@@ -3,6 +3,25 @@ export interface Env {
   PosthogToken: string;
 }
 
+/** Current API version served by this worker */
+const API_VERSION = "1";
+
+/**
+ * Add the X-API-Version response header and CORS headers to any Response.
+ * This helper ensures all API responses are consistently tagged.
+ */
+function withApiHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("X-API-Version", API_VERSION);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(
     request: Request,
@@ -13,6 +32,8 @@ export default {
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
     const country = request.headers.get("cf-ipcountry") || "unknown";
     const agent = request.headers.get("user-agent") || "unknown";
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
     if (agent.includes("opencode") || agent.includes("bun")) {
       ctx.waitUntil(
         fetch("https://us.i.posthog.com/i/v0/e/", {
@@ -31,11 +52,33 @@ export default {
               path: url.pathname,
             },
           }),
-        }),
+        }).catch(() => {}),
       );
     }
 
-    if (url.pathname === "/model-schema.json") {
+    // ── OPTIONS preflight ────────────────────────────────────────────────────
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+          "X-API-Version": API_VERSION,
+        },
+      });
+    }
+
+    // ── /v1/* path aliases — normalise to unversioned paths ──────────────────
+    // Allows consumers to pin to /v1/api.json and be guaranteed to receive
+    // the current v1 schema. A future breaking change would introduce /v2/.
+    let pathname = url.pathname;
+    if (pathname.startsWith("/v1/")) {
+      pathname = pathname.slice(3); // remove "/v1" prefix, keep leading /
+    }
+
+    // ── /model-schema.json ───────────────────────────────────────────────────
+    if (pathname === "/model-schema.json") {
       const apiUrl = new URL(url);
       apiUrl.pathname = "/_api.json";
       const apiResponse = await env.ASSETS.fetch(
@@ -65,31 +108,43 @@ export default {
         },
       };
 
-      return new Response(JSON.stringify(schema, null, 2), {
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
+      return withApiHeaders(
+        new Response(JSON.stringify(schema, null, 2), {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "public, max-age=3600",
+          },
+        }),
+      );
     }
 
-    if (url.pathname === "/api.json") {
+    // ── /api.json ────────────────────────────────────────────────────────────
+    if (pathname === "/api.json") {
       url.pathname = "/_api.json";
-    } else if (
-      url.pathname === "/" ||
-      url.pathname === "/index.html" ||
-      url.pathname === "/index"
+      const resp = await env.ASSETS.fetch(new Request(url.toString(), request));
+      return withApiHeaders(resp);
+    }
+
+    // ── Homepage routes ──────────────────────────────────────────────────────
+    if (
+      pathname === "/" ||
+      pathname === "/index.html" ||
+      pathname === "/index"
     ) {
       url.pathname = "/_index";
-    } else if (url.pathname.startsWith("/logos/")) {
+    } else if (pathname.startsWith("/logos/")) {
       // Check if the specific provider logo exists in static assets
-      const logoResponse = await env.ASSETS.fetch(new Request(url.toString(), request));
+      const logoResponse = await env.ASSETS.fetch(
+        new Request(url.toString(), request),
+      );
 
       if (logoResponse.status === 404) {
         // Fallback to default logo
         const defaultUrl = new URL(url);
         defaultUrl.pathname = "/logos/default.svg";
-        return await env.ASSETS.fetch(new Request(defaultUrl.toString(), request));
+        return await env.ASSETS.fetch(
+          new Request(defaultUrl.toString(), request),
+        );
       }
 
       return logoResponse;
