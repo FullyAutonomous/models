@@ -213,9 +213,35 @@ export const Rendered = renderToString(
         <button id="help">How to use</button>
       </div>
     </header>
+    {/* ── Comparison floating action bar ─────────────────────────────────── */}
+    <div id="compare-bar" class="compare-bar" hidden>
+      <span id="compare-count" class="compare-count">0 selected</span>
+      <button id="compare-btn" class="compare-btn" disabled>Compare</button>
+      <button id="compare-clear" class="compare-clear-btn">Clear</button>
+    </div>
+
+    {/* ── Comparison dialog ───────────────────────────────────────────────── */}
+    <dialog id="compare-modal" class="compare-modal">
+      <div class="compare-modal-header">
+        <h2>Model Comparison</h2>
+        <button id="compare-close" class="compare-close-btn" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="compare-table-container" class="compare-table-container">
+        {/* Filled by JS */}
+      </div>
+    </dialog>
+
     <table>
       <thead>
         <tr>
+          <th class="compare-col">
+            <span class="sr-only">Compare</span>
+          </th>
           <th class="sortable" data-type="text">
             Provider <span class="sort-indicator"></span>
           </th>
@@ -354,7 +380,15 @@ export const Rendered = renderToString(
                 modelA.name.localeCompare(modelB.name)
               )
               .map(([modelId, model]) => (
-                <tr key={`${providerId}-${modelId}`}>
+                <tr key={`${providerId}-${modelId}`} data-compare-id={`${providerId}/${modelId}`}>
+                  <td class="compare-col">
+                    <input
+                      type="checkbox"
+                      class="compare-checkbox"
+                      aria-label={`Compare ${model.name}`}
+                      onchange={`toggleCompare(this, '${providerId}/${modelId}')`}
+                    />
+                  </td>
                   <td>
                     <div class="provider-cell">
                       {renderProviderLogo(providerId)}
@@ -570,5 +604,45 @@ export const Rendered = renderToString(
         </a>
       </div>
     </dialog>
+
+    {/* Embed model data for comparison feature */}
+    <script
+      id="models-data"
+      type="application/json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(Providers).flatMap(([providerId, provider]) =>
+              Object.entries(provider.models).map(([modelId, model]) => [
+                `${providerId}/${modelId}`,
+                {
+                  provider: provider.name,
+                  providerId,
+                  modelId,
+                  name: model.name,
+                  family: model.family,
+                  reasoning: model.reasoning,
+                  tool_call: model.tool_call,
+                  structured_output: model.structured_output,
+                  open_weights: model.open_weights,
+                  temperature: model.temperature,
+                  context: model.limit.context,
+                  output: model.limit.output,
+                  input_cost: model.cost?.input,
+                  output_cost: model.cost?.output,
+                  reasoning_cost: model.cost?.reasoning,
+                  cache_read: model.cost?.cache_read,
+                  knowledge: model.knowledge,
+                  release_date: model.release_date,
+                  status: model.status,
+                  input_modalities: model.modalities.input,
+                  output_modalities: model.modalities.output,
+                },
+              ])
+            )
+          )
+        ),
+      }}
+    />
   </Fragment>
 );
