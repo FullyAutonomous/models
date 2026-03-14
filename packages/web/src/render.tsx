@@ -210,9 +210,63 @@ export const Rendered = renderToString(
           <input type="text" id="search" placeholder="Search models" />
           <span class="search-shortcut">⌘K</span>
         </div>
+        <button id="calc-btn" class="calc-btn" title="Cost Calculator (⌘⇧C)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="16" height="20" x="4" y="2" rx="2"></rect>
+            <line x1="8" y1="6" x2="16" y2="6"></line>
+            <line x1="8" y1="10" x2="10" y2="10"></line>
+            <line x1="12" y1="10" x2="14" y2="10"></line>
+            <line x1="16" y1="10" x2="16" y2="10"></line>
+            <line x1="8" y1="14" x2="10" y2="14"></line>
+            <line x1="12" y1="14" x2="14" y2="14"></line>
+            <line x1="16" y1="14" x2="16" y2="14"></line>
+            <line x1="8" y1="18" x2="10" y2="18"></line>
+            <line x1="12" y1="18" x2="14" y2="18"></line>
+            <line x1="16" y1="18" x2="16" y2="18"></line>
+          </svg>
+          Calculator
+        </button>
         <button id="help">How to use</button>
       </div>
     </header>
+
+    {/* ── Cost Calculator Dialog ───────────────────────────────────────────── */}
+    <dialog id="calc-modal" class="calc-modal">
+      <div class="calc-modal-header">
+        <h2>Cost Calculator</h2>
+        <button id="calc-close" class="modal-close-btn" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="calc-body">
+        <div class="calc-inputs">
+          <div class="calc-field">
+            <label for="calc-input-tokens">Input tokens / request</label>
+            <input type="number" id="calc-input-tokens" class="calc-number" value="1000" min="0" />
+          </div>
+          <div class="calc-field">
+            <label for="calc-output-tokens">Output tokens / request</label>
+            <input type="number" id="calc-output-tokens" class="calc-number" value="500" min="0" />
+          </div>
+          <div class="calc-field">
+            <label for="calc-requests">Requests / month</label>
+            <input type="number" id="calc-requests" class="calc-number" value="10000" min="1" />
+          </div>
+          <div class="calc-field">
+            <label for="calc-cache-tokens">Cached read tokens / request</label>
+            <input type="number" id="calc-cache-tokens" class="calc-number" value="0" min="0" />
+          </div>
+        </div>
+        <p class="calc-desc">Showing top 20 cheapest models with pricing data</p>
+        <div id="calc-results" class="calc-results">
+          {/* Filled by JS */}
+        </div>
+      </div>
+    </dialog>
+
     <table>
       <thead>
         <tr>
@@ -570,5 +624,27 @@ export const Rendered = renderToString(
         </a>
       </div>
     </dialog>
+
+    {/* Embed pricing data for the cost calculator */}
+    <script
+      id="pricing-data"
+      type="application/json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(
+          Object.entries(Providers).flatMap(([providerId, provider]) =>
+            Object.entries(provider.models)
+              .filter(([, model]) => model.status !== "deprecated" && model.cost)
+              .map(([modelId, model]) => ({
+                key: `${providerId}/${modelId}`,
+                name: model.name,
+                provider: provider.name,
+                input: model.cost!.input,
+                output: model.cost!.output,
+                cache_read: model.cost?.cache_read,
+              }))
+          )
+        ),
+      }}
+    />
   </Fragment>
 );
