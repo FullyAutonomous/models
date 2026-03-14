@@ -3,6 +3,9 @@ export interface Env {
   PosthogToken: string;
 }
 
+/** Current API version — increment when making breaking schema changes */
+const API_VERSION = "1";
+
 // ── Analytics helper ──────────────────────────────────────────────────────────
 
 function trackHit(
@@ -52,15 +55,17 @@ function jsonResponse(
       "Cache-Control": cache,
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "X-API-Version": API_VERSION,
     },
   });
 }
 
-/** Proxy an ASSETS response while injecting CORS headers */
+/** Proxy an ASSETS response while injecting CORS and versioning headers */
 async function corsProxy(resp: Response): Promise<Response> {
   const headers = new Headers(resp.headers);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  headers.set("X-API-Version", API_VERSION);
   return new Response(resp.body, { status: resp.status, headers });
 }
 
@@ -98,14 +103,22 @@ export default {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
           "Access-Control-Allow-Headers": "Content-Type",
+          "X-API-Version": API_VERSION,
         },
       });
     }
 
-    trackHit(request, env, ctx, pathname);
+    // ── /v1/* path aliases — strip the version prefix so all routing below
+    // handles the canonical paths. Consumers can pin to /v1/ to signal intent
+    // to use a stable schema; a future breaking change would introduce /v2/.
+    const routePath = pathname.startsWith("/v1/")
+      ? pathname.slice(3) // remove "/v1" keeping the leading "/"
+      : pathname;
+
+    trackHit(request, env, ctx, routePath);
 
     // ── /model-schema.json — dynamic JSON Schema of all model IDs ────────────
-    if (pathname === "/model-schema.json") {
+    if (routePath === "/model-schema.json") {
       const apiUrl = new URL(url);
       apiUrl.pathname = "/_api.json";
       const apiResponse = await env.ASSETS.fetch(
@@ -137,21 +150,21 @@ export default {
     }
 
     // ── /api.json — full catalog ──────────────────────────────────────────────
-    if (pathname === "/api.json") {
+    if (routePath === "/api.json") {
       url.pathname = "/_api.json";
       const resp = await env.ASSETS.fetch(new Request(url.toString(), request));
       return corsProxy(resp);
     }
 
     // ── /api/providers.json — provider list (no nested models) ───────────────
-    if (pathname === "/api/providers.json") {
+    if (routePath === "/api/providers.json") {
       url.pathname = "/_api/providers.json";
       const resp = await env.ASSETS.fetch(new Request(url.toString(), request));
       return corsProxy(resp);
     }
 
     // ── /api/providers/:id.json — single provider with models ────────────────
-    const providerMatch = pathname.match(/^\/api\/providers\/([^/]+)\.json$/);
+    const providerMatch = routePath.match(/^\/api\/providers\/([^/]+)\.json$/);
     if (providerMatch) {
       url.pathname = `/_api/providers/${providerMatch[1]}.json`;
       const resp = await env.ASSETS.fetch(new Request(url.toString(), request));
@@ -162,7 +175,7 @@ export default {
     }
 
     // ── /api/models/:provider/:model(.json) — single model lookup ────────────
-    const modelMatch = pathname.match(/^\/api\/models\/(.+?)\.json$/);
+    const modelMatch = routePath.match(/^\/api\/models\/(.+?)\.json$/);
     if (modelMatch) {
       url.pathname = `/_api/models/${modelMatch[1]}.json`;
       const resp = await env.ASSETS.fetch(new Request(url.toString(), request));
@@ -173,7 +186,7 @@ export default {
     }
 
     // ── /api/search.json — filtered model search (dynamic, computed) ─────────
-    if (pathname === "/api/search.json") {
+    if (routePath === "/api/search.json") {
       const apiUrl = new URL(url);
       apiUrl.pathname = "/_api.json";
       const apiResponse = await env.ASSETS.fetch(
@@ -292,16 +305,16 @@ export default {
 
     // ── Homepage routes ───────────────────────────────────────────────────────
     if (
-      pathname === "/" ||
-      pathname === "/index.html" ||
-      pathname === "/index"
+      routePath === "/" ||
+      routePath === "/index.html" ||
+      routePath === "/index"
     ) {
       url.pathname = "/_index";
       return env.ASSETS.fetch(new Request(url.toString(), request));
     }
 
     // ── Logo routes ───────────────────────────────────────────────────────────
-    if (pathname.startsWith("/logos/")) {
+    if (routePath.startsWith("/logos/")) {
       const logoResponse = await env.ASSETS.fetch(
         new Request(url.toString(), request),
       );
