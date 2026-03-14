@@ -48,3 +48,42 @@ await Bun.write("./dist/api.json", JSON.stringify(Providers));
 
 await $`mv ./dist/index.html ./dist/_index.html`;
 await $`mv ./dist/api.json ./dist/_api.json`;
+
+// ── Granular API: generate per-provider and per-model static JSON files ───────
+
+await fs.mkdir("./dist/_api/providers", { recursive: true });
+
+// Build provider list (without nested models for the list endpoint)
+const providerList = Object.entries(Providers).map(([id, provider]) => {
+  const { models: _models, ...providerMeta } = provider;
+  return { ...providerMeta, model_count: Object.keys(provider.models).length };
+});
+
+await Bun.write(
+  "./dist/_api/providers.json",
+  JSON.stringify(providerList),
+);
+
+// Per-provider JSON (includes full models)
+for (const [providerId, provider] of Object.entries(Providers)) {
+  await Bun.write(
+    `./dist/_api/providers/${providerId}.json`,
+    JSON.stringify(provider),
+  );
+}
+
+// Per-model JSON: dist/_api/models/<provider>/<model-id>.json
+// Model IDs can contain slashes (subdirectories) — handle that
+for (const [providerId, provider] of Object.entries(Providers)) {
+  for (const [modelId, model] of Object.entries(provider.models)) {
+    const modelPath = `./dist/_api/models/${providerId}/${modelId}.json`;
+    const modelDir = path.dirname(modelPath);
+    await fs.mkdir(modelDir, { recursive: true });
+    await Bun.write(modelPath, JSON.stringify({ provider: providerId, ...model }));
+  }
+}
+
+console.log(
+  `Generated granular API: ${providerList.length} providers, ` +
+  `${Object.values(Providers).reduce((n, p) => n + Object.keys(p.models).length, 0)} models`,
+);
