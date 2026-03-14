@@ -7,6 +7,13 @@ const filtersPanel = document.getElementById("filters-panel") as HTMLElement;
 const filtersClear = document.getElementById("filters-clear") as HTMLButtonElement;
 const filterCountBadge = document.getElementById("filter-count") as HTMLElement;
 const rowCountEl = document.getElementById("row-count") as HTMLElement;
+const compareBar = document.getElementById("compare-bar") as HTMLElement;
+const compareCount = document.getElementById("compare-count") as HTMLElement;
+const compareBtn = document.getElementById("compare-btn") as HTMLButtonElement;
+const compareClear = document.getElementById("compare-clear") as HTMLButtonElement;
+const compareModal = document.getElementById("compare-modal") as HTMLDialogElement;
+const compareClose = document.getElementById("compare-close") as HTMLButtonElement;
+const compareTableContainer = document.getElementById("compare-table-container") as HTMLElement;
 
 /////////////////////////
 // URL State Management
@@ -380,6 +387,141 @@ function filterTable(value: string) {
   applyFilters();
 }
 
+///////////////////////////////////////////
+// Model Comparison Feature
+///////////////////////////////////////////
+
+const MAX_COMPARE = 5;
+const selectedModels = new Set<string>();
+
+// Parse embedded model data
+const modelsDataEl = document.getElementById("models-data");
+const allModelsData: Record<string, Record<string, unknown>> = modelsDataEl
+  ? JSON.parse(modelsDataEl.textContent ?? "{}")
+  : {};
+
+function updateCompareBar() {
+  const count = selectedModels.size;
+  compareBar.hidden = count === 0;
+  compareCount.textContent = `${count} model${count !== 1 ? "s" : ""} selected`;
+  compareBtn.disabled = count < 2;
+}
+
+(window as any).toggleCompare = (checkbox: HTMLInputElement, modelKey: string) => {
+  if (checkbox.checked) {
+    if (selectedModels.size >= MAX_COMPARE) {
+      checkbox.checked = false;
+      return;
+    }
+    selectedModels.add(modelKey);
+  } else {
+    selectedModels.delete(modelKey);
+  }
+  updateCompareBar();
+  syncCompareUrlParam();
+};
+
+function syncCompareUrlParam() {
+  updateQueryParams({
+    compare: selectedModels.size > 0 ? Array.from(selectedModels).join(",") : null,
+  });
+}
+
+compareClear.addEventListener("click", () => {
+  selectedModels.clear();
+  document.querySelectorAll<HTMLInputElement>(".compare-checkbox").forEach(cb => {
+    cb.checked = false;
+  });
+  updateCompareBar();
+  syncCompareUrlParam();
+});
+
+compareBtn.addEventListener("click", () => {
+  openCompareDialog();
+});
+
+compareClose.addEventListener("click", () => compareModal.close());
+compareModal.addEventListener("click", (e) => {
+  if (e.target === compareModal) compareModal.close();
+});
+compareModal.addEventListener("cancel", () => compareModal.close());
+
+function fmt(value: unknown, isCost = false): string {
+  if (value === undefined || value === null) return "-";
+  if (isCost) return `$${(value as number).toFixed(2)}`;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.join(", ") || "-";
+  if (typeof value === "number") return value.toLocaleString();
+  return String(value) || "-";
+}
+
+const COMPARE_FIELDS: Array<{ label: string; key: string; isCost?: boolean; betterLow?: boolean; betterHigh?: boolean }> = [
+  { label: "Provider", key: "provider" },
+  { label: "Model ID", key: "modelId" },
+  { label: "Family", key: "family" },
+  { label: "Input Cost ($/1M)", key: "input_cost", isCost: true, betterLow: true },
+  { label: "Output Cost ($/1M)", key: "output_cost", isCost: true, betterLow: true },
+  { label: "Reasoning Cost ($/1M)", key: "reasoning_cost", isCost: true, betterLow: true },
+  { label: "Cache Read ($/1M)", key: "cache_read", isCost: true, betterLow: true },
+  { label: "Context Window", key: "context", betterHigh: true },
+  { label: "Max Output", key: "output", betterHigh: true },
+  { label: "Reasoning", key: "reasoning" },
+  { label: "Tool Call", key: "tool_call" },
+  { label: "Structured Output", key: "structured_output" },
+  { label: "Open Weights", key: "open_weights" },
+  { label: "Temperature", key: "temperature" },
+  { label: "Input Modalities", key: "input_modalities" },
+  { label: "Output Modalities", key: "output_modalities" },
+  { label: "Knowledge Cutoff", key: "knowledge" },
+  { label: "Release Date", key: "release_date" },
+];
+
+function getBestValue(models: Record<string, unknown>[], key: string, betterLow?: boolean, betterHigh?: boolean): unknown {
+  const vals = models.map(m => m[key]).filter(v => v !== undefined && v !== null);
+  if (vals.length === 0) return undefined;
+  if (betterLow) return Math.min(...vals.map(v => v as number));
+  if (betterHigh) return Math.max(...vals.map(v => v as number));
+  return undefined;
+}
+
+function openCompareDialog() {
+  const models = Array.from(selectedModels).map(key => allModelsData[key] ?? { modelId: key });
+
+  const rows = COMPARE_FIELDS.map(field => {
+    const best = getBestValue(models, field.key, field.betterLow, field.betterHigh);
+    const cells = models.map(m => {
+      const val = m[field.key];
+      const text = fmt(val, field.isCost);
+      const isBest = best !== undefined && val === best && models.length > 1;
+      return `<td class="${isBest ? "compare-best" : ""}">${text}</td>`;
+    }).join("");
+    return `<tr><th>${field.label}</th>${cells}</tr>`;
+  }).join("");
+
+  const headers = models.map(m => `<th>${String(m["name"] ?? m["modelId"] ?? "")}<br><span class="compare-provider-name">${String(m["provider"] ?? "")}</span></th>`).join("");
+
+  compareTableContainer.innerHTML = `
+    <div class="compare-scroll">
+      <table class="compare-table">
+        <thead><tr><th></th>${headers}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  let scrollY = 0;
+  scrollY = window.scrollY;
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${scrollY}px`;
+  compareModal.showModal();
+
+  compareModal.addEventListener("close", () => {
+    document.body.style.position = "";
+    document.body.style.top = "";
+    window.scrollTo(0, scrollY);
+  }, { once: true });
+}
+
 ///////////////////////////////////
 // Initialize State from URL
 ///////////////////////////////////
@@ -432,5 +574,26 @@ function initializeFromURL() {
   })();
 }
 
-document.addEventListener("DOMContentLoaded", initializeFromURL);
-window.addEventListener("popstate", initializeFromURL);
+// Restore compare selections from URL
+function restoreCompare(params: URLSearchParams) {
+  const compareParam = params.get("compare");
+  if (!compareParam) return;
+  const keys = compareParam.split(",").slice(0, MAX_COMPARE);
+  for (const key of keys) {
+    selectedModels.add(key);
+    const checkbox = document.querySelector<HTMLInputElement>(
+      `tr[data-compare-id="${CSS.escape(key)}"] .compare-checkbox`
+    );
+    if (checkbox) checkbox.checked = true;
+  }
+  updateCompareBar();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initializeFromURL();
+  restoreCompare(getQueryParams());
+});
+window.addEventListener("popstate", () => {
+  initializeFromURL();
+  restoreCompare(getQueryParams());
+});
