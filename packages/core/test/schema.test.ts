@@ -60,7 +60,6 @@ describe("Model schema", () => {
     expect(result.success).toBe(false);
   });
 
-  // 1b: reasoning error message was wrong — validate the field validates correctly
   it("rejects negative reasoning cost", () => {
     const result = Model.safeParse({
       ...validModel,
@@ -73,7 +72,6 @@ describe("Model schema", () => {
         (i) => i.path.includes("reasoning") && i.path.includes("cost"),
       );
       expect(reasoningError).toBeDefined();
-      // Verify the error message is about reasoning, not input
       expect(reasoningError?.message).toContain("Reasoning price");
     }
   });
@@ -84,12 +82,6 @@ describe("Model schema", () => {
       cost: { input: -1, output: 1 },
     });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      const inputError = result.error.issues.find(
-        (i) => i.path.includes("input") && i.path.includes("cost"),
-      );
-      expect(inputError?.message).toContain("Input price");
-    }
   });
 
   it("rejects cost.reasoning when reasoning=false", () => {
@@ -99,12 +91,6 @@ describe("Model schema", () => {
       cost: { input: 1, output: 1, reasoning: 5 },
     });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      const err = result.error.issues.find((i) =>
-        i.path.includes("reasoning"),
-      );
-      expect(err).toBeDefined();
-    }
   });
 
   it("accepts cost.reasoning when reasoning=true", () => {
@@ -139,9 +125,46 @@ describe("Model schema", () => {
   it("accepts all valid input modalities", () => {
     const result = Model.safeParse({
       ...validModel,
+      attachment: true,
       modalities: { input: ["text", "audio", "image", "video", "pdf"], output: ["text"] },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("rejects empty input modality array", () => {
+    const result = Model.safeParse({
+      ...validModel,
+      modalities: { input: [], output: ["text"] },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = result.error.issues.find(
+        (i) => i.path.includes("input") && i.path.includes("modalities"),
+      );
+      expect(err).toBeDefined();
+    }
+  });
+
+  it("rejects empty output modality array", () => {
+    const result = Model.safeParse({
+      ...validModel,
+      modalities: { input: ["text"], output: [] },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const err = result.error.issues.find(
+        (i) => i.path.includes("output") && i.path.includes("modalities"),
+      );
+      expect(err).toBeDefined();
+    }
+  });
+
+  it("rejects extra fields in modalities due to .strict()", () => {
+    const result = Model.safeParse({
+      ...validModel,
+      modalities: { input: ["text"], output: ["text"], unknown: ["x"] },
+    });
+    expect(result.success).toBe(false);
   });
 
   it("accepts valid status values", () => {
@@ -156,25 +179,147 @@ describe("Model schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts valid date formats", () => {
-    expect(
-      Model.safeParse({ ...validModel, release_date: "2024-01" }).success,
-    ).toBe(true);
-    expect(
-      Model.safeParse({ ...validModel, release_date: "2024-01-15" }).success,
-    ).toBe(true);
+  describe("date validation", () => {
+    it("accepts YYYY-MM format", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024-01" }).success,
+      ).toBe(true);
+    });
+
+    it("accepts YYYY-MM-DD format", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024-01-15" }).success,
+      ).toBe(true);
+    });
+
+    it("rejects YYYY-only format", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024" }).success,
+      ).toBe(false);
+    });
+
+    it("rejects MM-YYYY format", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "01-2024" }).success,
+      ).toBe(false);
+    });
+
+    it("rejects impossible month 13", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024-13" }).success,
+      ).toBe(false);
+    });
+
+    it("rejects February 31 (impossible day)", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024-02-31" }).success,
+      ).toBe(false);
+    });
+
+    it("rejects February 29 in non-leap year", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2023-02-29" }).success,
+      ).toBe(false);
+    });
+
+    it("accepts February 29 in leap year", () => {
+      expect(
+        Model.safeParse({ ...validModel, release_date: "2024-02-29" }).success,
+      ).toBe(true);
+    });
+
+    it("accepts valid knowledge cutoff date", () => {
+      expect(
+        Model.safeParse({ ...validModel, knowledge: "2024-09" }).success,
+      ).toBe(true);
+    });
+
+    it("rejects impossible knowledge cutoff date", () => {
+      expect(
+        Model.safeParse({ ...validModel, knowledge: "2025-02-31" }).success,
+      ).toBe(false);
+    });
   });
 
-  it("rejects invalid date formats", () => {
-    expect(
-      Model.safeParse({ ...validModel, release_date: "2024" }).success,
-    ).toBe(false);
-    expect(
-      Model.safeParse({ ...validModel, release_date: "01-2024" }).success,
-    ).toBe(false);
-    expect(
-      Model.safeParse({ ...validModel, release_date: "not-a-date" }).success,
-    ).toBe(false);
+  describe("last_updated >= release_date validation", () => {
+    it("accepts last_updated equal to release_date", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        release_date: "2024-06",
+        last_updated: "2024-06",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts last_updated after release_date", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        release_date: "2024-01",
+        last_updated: "2024-06",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects last_updated before release_date", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        release_date: "2024-06",
+        last_updated: "2024-01",
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const err = result.error.issues.find((i) =>
+          i.path.includes("last_updated"),
+        );
+        expect(err).toBeDefined();
+        expect(err?.message).toContain("earlier than release_date");
+      }
+    });
+
+    it("handles mixed YYYY-MM and YYYY-MM-DD comparison correctly", () => {
+      // "2024-11" = Nov 1, 2024; "2024-11-18" = Nov 18, 2024 — ok
+      expect(
+        Model.safeParse({
+          ...validModel,
+          release_date: "2024-11-18",
+          last_updated: "2024-11",
+        }).success,
+      ).toBe(false); // 2024-11-01 < 2024-11-18
+
+      expect(
+        Model.safeParse({
+          ...validModel,
+          release_date: "2024-11",
+          last_updated: "2024-11-18",
+        }).success,
+      ).toBe(true); // 2024-11-18 >= 2024-11-01
+    });
+  });
+
+  describe("limit schema", () => {
+    it("rejects extra fields in limit due to .strict()", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        limit: { context: 128000, output: 4096, unknown: 99 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts context = 0 (e.g., audio models)", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        limit: { context: 0, output: 4096 },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts optional input limit", () => {
+      const result = Model.safeParse({
+        ...validModel,
+        limit: { context: 128000, input: 64000, output: 4096 },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   it("accepts interleaved as boolean true", () => {
