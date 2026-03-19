@@ -11,6 +11,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,18 +21,42 @@ jobs:
         with:
           bun-version: latest
 
-      # Workaround for Pulumi version conflict:
-      # GitHub runners have Pulumi 3.212.0+ pre-installed, which removed the -root flag
-      # from pulumi-language-nodejs (see https://github.com/pulumi/pulumi/pull/21065).
-      # SST 3.17.x uses Pulumi SDK 3.210.0 which still passes -root, causing a conflict.
-      # Removing the system language plugin forces SST to use its bundled compatible version.
-      # TODO: Remove when sst supports Pulumi >3.210.0
-      - name: Fix Pulumi version conflict
-        run: sudo rm -f /usr/local/bin/pulumi-language-nodejs
-
       - name: Install dependencies
         run: bun install
 
-      - run: bun sst deploy --stage=dev
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Build web
+        run: cd packages/web && bun run script/build.ts
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync dist to server
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            packages/web/dist/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/models-dev/dist/
+
+      - name: Sync server package to server
+        run: |
+          rsync -az --delete \
+            --exclude node_modules \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            packages/server/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/models-dev/server/
+
+      - name: Restart server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo systemctl restart models-dev"
+
+      - name: Verify server is up
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sleep 2 && sudo systemctl is-active models-dev"

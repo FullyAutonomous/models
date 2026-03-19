@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@models.dev/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "dev": "bun --hot run src/server.ts"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:"
+  }
+}

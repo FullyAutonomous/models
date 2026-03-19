@@ -15,7 +15,7 @@
     }
   },
   "scripts": {
-    "test": "bun test packages/core/test/ packages/function/test/ packages/web/test/",
+    "test": "bun test packages/core/test/ packages/web/test/ packages/server/test/",
     "validate": "bun ./packages/core/script/validate.ts",
     "freshness": "bun ./packages/core/script/freshness-report.ts",
     "helicone:generate": "bun ./packages/core/script/generate-helicone.ts",
@@ -23,8 +23,5 @@
     "vercel:generate": "bun ./packages/core/script/generate-vercel.ts",
     "wandb:generate": "bun ./packages/core/script/generate-wandb.ts"
   },
-  "dependencies": {
-    "@cloudflare/workers-types": "^4.20250801.0",
-    "sst": "3.17.23"
-  }
+  "dependencies": {}
 }
