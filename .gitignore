@@ -40,3 +40,6 @@ TODO.md
 
 # Claude / AI assistant configs (project-specific, not upstream)
 .claude.md
+
+# Git worktrees
+.worktrees/
