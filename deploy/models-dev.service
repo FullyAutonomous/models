@@ -1,0 +1,19 @@
+[Unit]
+Description=models.dev Bun HTTP server
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/models-dev/server
+ExecStart=/usr/local/bin/bun run src/server.ts
+Restart=always
+RestartSec=5
+
+Environment=PORT=3000
+Environment=DIST_DIR=/opt/models-dev/dist
+# POSTHOG_TOKEN is loaded from /etc/models-dev/env (EnvironmentFile below)
+EnvironmentFile=-/etc/models-dev/env
+
+[Install]
+WantedBy=multi-user.target
