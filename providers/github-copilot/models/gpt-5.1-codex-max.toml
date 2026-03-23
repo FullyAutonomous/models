@@ -5,7 +5,7 @@ last_updated = "2025-12-04"
 attachment = true
 reasoning = true
 temperature = false
-knowledge = "2024-09"
+knowledge = "2024-09-30"
 tool_call = true
 open_weights = false
 
@@ -14,8 +14,9 @@ input = 0
 output = 0
 
 [limit]
-context = 128_000
+context = 400_000
 output = 128_000
+input = 128_000
 
 [modalities]
 input = ["text", "image"]
