@@ -1,21 +1,21 @@
-name = "Qwen3 32B"
-family = "qwen"
-release_date = "2024-12-23"
-last_updated = "2024-12-23"
+name = "Safety GPT OSS 20B"
+family = "gpt-oss"
+release_date = "2025-03-05"
+last_updated = "2025-03-05"
 attachment = false
 reasoning = true
 temperature = true
-knowledge = "2024-11"
 tool_call = true
 open_weights = true
 
 [cost]
-input = 0.29
-output = 0.59
+input = 0.075
+output = 0.30
+cache_read = 0.037
 
 [limit]
 context = 131_072
-output = 40_960
+output = 65_536
 
 [modalities]
 input = ["text"]
