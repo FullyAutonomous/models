@@ -1,12 +1,13 @@
 name = "Claude Opus 4.5 (US)"
 family = "claude-opus"
 release_date = "2025-11-24"
-last_updated = "2025-11-24"
+last_updated = "2025-08-01"
 attachment = true
 reasoning = true
 temperature = true
 tool_call = true
-knowledge = "2025-03"
+structured_output = true
+knowledge = "2025-03-31"
 open_weights = false
 
 [cost]

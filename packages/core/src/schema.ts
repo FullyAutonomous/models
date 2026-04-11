@@ -54,6 +54,27 @@ const dateString = z
     message: "Date is not a valid calendar date",
   });
 
+// ── JSON value type ───────────────────────────────────────────────────────────
+
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
+
+const JsonValue: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValue),
+    z.record(JsonValue),
+  ]),
+);
+
 // ── Cost schema ───────────────────────────────────────────────────────────────
 
 const Cost = z.object({
@@ -125,11 +146,30 @@ export const Model = z
       })
       .strict(),
     status: z.enum(["alpha", "beta", "deprecated"]).optional(),
+    experimental: z
+      .object({
+        modes: z
+          .record(
+            z.object({
+              cost: Cost.optional(),
+              provider: z
+                .object({
+                  body: z.record(JsonValue).optional(),
+                  headers: z.record(z.string()).optional(),
+                })
+                .optional(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
     provider: z
       .object({
         npm: z.string().optional(),
         api: z.string().optional(),
         shape: z.enum(["responses", "completions"]).optional(),
+        body: z.record(JsonValue).optional(),
+        headers: z.record(z.string()).optional(),
       })
       .optional(),
   })
