@@ -109,6 +109,13 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Bun dependencies
+        if: steps.merge.outputs.result == 'success'
+        uses: actions/setup-node@v4
+        with:
+          cache: bun
+          cache-dependency-path: ./bun.lock
+
       - name: Validate data after merge
         if: steps.merge.outputs.result == 'success'
         id: validate
