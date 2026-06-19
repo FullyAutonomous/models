@@ -10,17 +10,19 @@ tool_call = true
 structured_output = true
 open_weights = true
 
+reasoning_options = []
+
 [interleaved]
 field = "reasoning_content"
 
 [cost]
-input = 0.28
-output = 0.42
-cache_read = 0.028
+input = 0.14
+output = 0.28
+cache_read = 0.0028
 
 [limit]
-context = 128_000
-output = 64_000
+context = 1_000_000
+output = 384_000
 
 [modalities]
 input = ["text"]

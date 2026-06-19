@@ -9,14 +9,17 @@ knowledge = "2024-12"
 tool_call = true
 open_weights = true
 
+[[reasoning_options]]
+type = "toggle"
+
 [cost]
 input = 0.10
 output = 0.30
 cache_read = 0.01
 
 [limit]
-context = 256_000
-output = 64_000
+context = 262_144
+output = 65_536
 
 [modalities]
 input = ["text"]

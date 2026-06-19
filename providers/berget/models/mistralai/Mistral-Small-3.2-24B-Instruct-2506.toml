@@ -4,6 +4,7 @@ release_date = "2025-10-01"
 last_updated = "2025-10-01"
 attachment = false
 reasoning = true
+reasoning_options = []
 temperature = true
 knowledge = "2025-09"
 tool_call = true
@@ -11,8 +12,8 @@ structured_output = true
 open_weights = true
 
 [cost]
-input = 0.3
-output = 0.3
+input = 0.33
+output = 0.33
 
 [limit]
 context = 32_000

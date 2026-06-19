@@ -31,8 +31,25 @@
 ## Model Configuration
 
 - Model `id` is **auto-injected** from filename (minus `.toml`) — never put `id` in TOML files
-- Same model is duplicated across provider directories with no cross-referencing
+- Provider models may reuse provider-agnostic facts from `models/` via `base_model`; otherwise the full provider model definition must be present in the file
 - Schema uses `.strict()` — extra fields cause validation errors
+
+### Model metadata and `base_model`
+- Provider-agnostic model facts live under `models/<provider>/<model>.toml`
+- Provider TOMLs can inherit those facts with:
+  ```toml
+  base_model = "<provider-id>/<model-id>"
+  base_model_omit = ["limit.input"] # optional, dot-path strings
+  ```
+  Example: `base_model = "anthropic/claude-opus-4-6"`
+- Resolved at parse time in `generate()`; the final provider JSON output contains **no** `base_model` or `base_model_omit` fields
+- Merge semantics:
+  - Plain objects from metadata and provider TOML (`[limit]`, `[modalities]`, …) are **deep-merged**
+  - Arrays (e.g. `modalities.input`) and primitives are **replaced** wholesale by the child
+  - Any provider field omitted is inherited verbatim from model metadata
+  - `cost`, `provider`, `experimental`, `reasoning_options`, `interleaved`, and `status` are provider-specific and must be declared in provider TOMLs when needed
+- `base_model_omit` runs **after** the merge and deletes each dot-path from the result. Missing paths are ignored. Ancestor tables that become empty as a result are also pruned.
+- The base model metadata file must exist; `base_model` pointing at a missing `models/` entry is an error
 
 ### Bedrock Naming Patterns
 - Dated models: `-v1:0` suffix (`anthropic.claude-3-5-sonnet-20241022-v1:0.toml`)

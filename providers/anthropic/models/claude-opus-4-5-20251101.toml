@@ -10,6 +10,14 @@ knowledge = "2025-03"
 structured_output = true
 open_weights = false
 
+[[reasoning_options]]
+type = "effort"
+values = ["low", "medium", "high"]
+
+[[reasoning_options]]
+type = "budget_tokens"
+min = 1_024
+
 [cost]
 input = 5.00
 output = 25.00

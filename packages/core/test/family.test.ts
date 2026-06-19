@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { ModelFamilyValues, ModelFamily } from "../src/family.js";
+import { inferKimiFamily } from "../src/family.js";
 
 describe("ModelFamilyValues", () => {
   it("contains no duplicate entries", () => {
@@ -30,5 +31,19 @@ describe("ModelFamilyValues", () => {
   it("trinity appears exactly once", () => {
     const count = ModelFamilyValues.filter((v) => v === "trinity").length;
     expect(count).toBe(1);
+  });
+});
+
+describe("inferKimiFamily", () => {
+  it("ignores K2 versions", () => {
+    expect(inferKimiFamily("moonshotai/kimi-k2.5")).toBe("kimi-k2");
+    expect(inferKimiFamily("moonshotai/kimi-k2.7-code")).toBe("kimi-k2");
+    expect(inferKimiFamily("Kimi K2.6")).toBe("kimi-k2");
+  });
+
+  it("preserves thinking variants", () => {
+    expect(inferKimiFamily("moonshotai/kimi-k2-thinking")).toBe("kimi-thinking");
+    expect(inferKimiFamily("Kimi K2.5 Thinking")).toBe("kimi-thinking");
+    expect(inferKimiFamily("moonshotai/kimi-k2.6:thinking")).toBe("kimi-thinking");
   });
 });

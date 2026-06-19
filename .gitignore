@@ -18,8 +18,7 @@ dist
 # OS files
 .DS_Store
 Thumbs.db
-
-# Dependencies
+.sync/
 node_modules
 
 # Data files

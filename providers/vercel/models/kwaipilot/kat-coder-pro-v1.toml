@@ -4,14 +4,20 @@ release_date = "2025-10-24"
 last_updated = "2025-10-24"
 attachment = false
 reasoning = true
+reasoning_options = []
 temperature = true
 tool_call = false
-open_weights = false
 knowledge = "2024-10"
+open_weights = false
+
+[cost]
+input = 0.03
+output = 1.2
+cache_read = 0.06
 
 [limit]
-context = 256000
-output = 32000
+context = 256_000
+output = 32_000
 
 [modalities]
 input = ["text"]

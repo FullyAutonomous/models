@@ -2,6 +2,7 @@ name = "GLM-5"
 family = "glm"
 attachment = false
 reasoning = true
+reasoning_options = []
 tool_call = true
 structured_output = true
 temperature = true
@@ -15,6 +16,7 @@ field = "reasoning_content"
 [cost]
 input = 1
 output = 3.2
+cache_read = 0.50
 
 [limit]
 context = 202_752

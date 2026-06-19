@@ -11,13 +11,13 @@ structured_output = true
 open_weights = true
 
 [cost]
-input = 0.28
-output = 0.42
-cache_read = 0.028
+input = 0.14
+output = 0.28
+cache_read = 0.0028
 
 [limit]
-context = 131_072
-output = 8_192
+context = 1_000_000
+output = 384_000
 
 [modalities]
 input = ["text"]
